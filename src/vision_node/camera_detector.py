@@ -6,12 +6,16 @@ from ros2_robot_platform.msg import DetectedObject, DetectedObjectArray
 from cv_bridge import CvBridge                                                                                 
 import cv2                                                                                                     
 import numpy as np                                                                                             
+import yaml                                                                                                    
+import os                                                                                                      
+from ament_index_python.packages import get_package_share_directory                                            
                                                                                                                
 class CameraDetector(Node):                                                                                    
     def __init__(self):                                                                                        
         super().__init__('camera_detector')                                                                    
         self.declare_parameter('show_image', False)                                                            
         self.declare_parameter('use_charuco', True)                                                            
+        self.declare_parameter('calibration_file', 'camera_calibration.yaml')                                  
         self.subscription = self.create_subscription(                                                          
             Image,                                                                                             
             '/camera/image_raw',                                                                               
@@ -33,14 +37,36 @@ class CameraDetector(Node):
         self.load_calibration()                                                                                
                                                                                                                
     def load_calibration(self):                                                                                
-        # Load from parameter server or file                                                                   
-        self.camera_matrix = np.array([[800., 0., 320.],                                                       
-                                       [0., 800., 240.],                                                       
-                                       [0., 0., 1.]])                                                          
-        self.dist_coeffs = np.zeros((5,1))                                                                     
+        calibration_file = self.get_parameter('calibration_file').value                                        
+        config_dir = os.path.join(get_package_share_directory('ros2_robot_platform'), 'config')                
+        calib_path = os.path.join(config_dir, calibration_file)                                                
+                                                                                                               
+        if os.path.exists(calib_path):                                                                         
+            self.get_logger().info(f'Loading calibration from {calib_path}')                                   
+            with open(calib_path, 'r') as f:                                                                   
+                calib = yaml.safe_load(f)                                                                      
+                                                                                                               
+            # Load camera matrix                                                                               
+            cam_data = calib.get('camera_matrix', {}).get('data', [800., 0., 320., 0., 800., 240., 0., 0., 1.])
+            self.camera_matrix = np.array(cam_data).reshape(3,3)                                               
+                                                                                                               
+            # Load distortion coefficients                                                                     
+            dist_data = calib.get('distortion_coefficients', {}).get('data', [0., 0., 0., 0., 0.])             
+            self.dist_coeffs = np.array(dist_data).reshape(-1,1)                                               
+        else:                                                                                                  
+            self.get_logger().warn(f'Calibration file {calib_path} not found. Using default values.')          
+            self.camera_matrix = np.array([[800., 0., 320.],                                                   
+                                           [0., 800., 240.],                                                   
+                                           [0., 0., 1.]])                                                      
+            self.dist_coeffs = np.zeros((5,1))                                                                 
                                                                                                                
     def image_callback(self, msg):                                                                             
-        cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')                                                      
+        try:                                                                                                   
+            cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')                                                  
+        except Exception as e:                                                                                 
+            self.get_logger().error(f'Failed to convert image: {e}')                                           
+            return                                                                                             
+                                                                                                               
         gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)                                                      
                                                                                                                
         use_charuco = self.get_parameter('use_charuco').value                                                  
@@ -93,7 +119,42 @@ self.dist_coeffs)
         # For now, publish empty object array                                                                  
         objects_msg = DetectedObjectArray()                                                                    
         objects_msg.header = msg.header                                                                        
-        self.objects_pub.publish(objects_msg)                                                                  
+                                                                                                               
+        # Convert to HSV for color detection                                                                   
+        hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)                                                        
+                                                                                                               
+        # Detect blue cubes (CUBE_BLUE)                                                                        
+        lower_blue = np.array([100, 150, 50])                                                                  
+        upper_blue = np.array([140, 255, 255])                                                                 
+        blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)                                                   
+                                                                                                               
+        # Find contours in blue mask                                                                           
+        contours, _ = cv2.findContours(blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)                  
+        for contour in contours:                                                                               
+            area = cv2.contourArea(contour)                                                                    
+            if area > 100:  # Minimum area threshold                                                           
+                # Get bounding box                                                                             
+                x, y, w, h = cv2.boundingRect(contour)                                                         
+                # Calculate center (in pixel coordinates)                                                      
+                center_x = x + w // 2                                                                          
+                center_y = y + h // 2                                                                          
+                                                                                                               
+                # Create detected object                                                                       
+                obj = DetectedObject()                                                                         
+                obj.type = DetectedObject.CUBE_BLUE                                                            
+                obj.pose.position.x = float(center_x)                                                          
+                obj.pose.position.y = float(center_y)                                                          
+                obj.pose.position.z = 0.0                                                                      
+                obj.pose.orientation.w = 1.0                                                                   
+                obj.confidence = min(1.0, area / 1000.0)                                                       
+                objects_msg.objects.append(obj)                                                                
+                                                                                                               
+                # Draw for visualization                                                                       
+                cv2.rectangle(cv_image, (x, y), (x+w, y+h), (255, 0, 0), 2)                                    
+                cv2.putText(cv_image, 'Blue Cube', (x, y-10),                                                  
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)                                      
+                                                                                                               
+        self.objects_pub.publish(objects_msg)                                                                     
                                                                                                                
         show = self.get_parameter('show_image').value                                                          
         if show:                                                                                               
@@ -108,4 +169,4 @@ def main(args=None):
     rclpy.shutdown()                                                                                           
                                                                                                                
 if __name__ == '__main__':                                                                                     
-    main()                    
+    main()  

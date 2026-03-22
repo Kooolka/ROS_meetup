@@ -41,6 +41,7 @@ setup(
             'serial_bridge = ros2_robot_platform.esp32_bridge.serial_bridge:main',                             
             'arm_controller = ros2_robot_platform.control_node.arm_controller:main',                           
             'game_manager = ros2_robot_platform.game_manager.game_manager:main',                               
+            'camera_calibrator = ros2_robot_platform.scripts.calibrate_camera:main',                           
         ],                                                                                                     
-    },                                                                                                         
+    },                                                                                                        
 )                            
