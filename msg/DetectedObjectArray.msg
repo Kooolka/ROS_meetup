@@ -1,2 +1,2 @@
-std_msgs/Header header                                                                                         
-DetectedObject[] objects   
+std_msgs/Header header
+DetectedObject[] objects
