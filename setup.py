@@ -12,8 +12,8 @@ setup(
               f'{package_name}.control_node',                                                                  
               f'{package_name}.esp32_bridge',                                                                  
               f'{package_name}.game_manager'],                                                                 
-    data_files=[                                                                                               
-         ('share/ament_index/resource_index/packages',                                                          
+     data_files=[                                                                                               
+        ('share/ament_index/resource_index/packages',                                                          
             ['resource/' + package_name]),                                                                     
         ('share/' + package_name, ['package.xml']),                                                            
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),                                  
@@ -25,7 +25,8 @@ setup(
         (os.path.join('share', package_name, 'msg'), glob('msg/*.msg')),                                       
         (os.path.join('share', package_name, 'web_teleop'), glob('web_teleop/*.py')),                          
         (os.path.join('share', package_name, 'web_teleop'), glob('web_teleop/*.html')),                        
-    ],                                                                                                          
+        (os.path.join('share', package_name, 'scripts'), glob('scripts/*.py')),                                
+    ],                                                                                                      
     install_requires=['setuptools'],                                                                           
     zip_safe=True,                                                                                             
     maintainer='User',                                                                                         

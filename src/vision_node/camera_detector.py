@@ -115,8 +115,7 @@ self.dist_coeffs)
                                                                                                                
         self.pose_pub.publish(pose_array)                                                                      
                                                                                                                
-        # TODO: Add object detection (cubes, cylinders, figurines) using color/contour analysis                
-        # For now, publish empty object array                                                                  
+        # Simple color-based object detection                                                                  
         objects_msg = DetectedObjectArray()                                                                    
         objects_msg.header = msg.header                                                                        
                                                                                                                
@@ -154,7 +153,7 @@ self.dist_coeffs)
                 cv2.putText(cv_image, 'Blue Cube', (x, y-10),                                                  
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)                                      
                                                                                                                
-        self.objects_pub.publish(objects_msg)                                                                     
+        self.objects_pub.publish(objects_msg)                                                                  
                                                                                                                
         show = self.get_parameter('show_image').value                                                          
         if show:                                                                                               

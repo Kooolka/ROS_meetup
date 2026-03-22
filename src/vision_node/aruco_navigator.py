@@ -6,6 +6,13 @@ import math
 class ArucoNavigator(Node):                                                                                    
     def __init__(self):                                                                                        
         super().__init__('aruco_navigator')                                                                    
+        self.declare_parameter('target_id', 0)          # ID маркера, к которому ехать                         
+        self.declare_parameter('target_distance', 0.3)  # Желаемая дистанция до маркера (м)                    
+        self.declare_parameter('kp_linear', 0.5)                                                               
+        self.declare_parameter('kp_angular', 1.0)                                                              
+        self.declare_parameter('max_linear', 0.5)                                                              
+        self.declare_parameter('max_angular', 1.0)                                                             
+                                                                                                               
         self.subscription = self.create_subscription(                                                          
             PoseArray,                                                                                         
             '/detected_arucos',                                                                                
@@ -13,41 +20,56 @@ class ArucoNavigator(Node):
             10)                                                                                                
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)                                            
                                                                                                                
-        # Target position (x, y) in meters relative to robot                                                   
-        self.target_x = 0.5                                                                                    
-        self.target_y = 0.0                                                                                    
-                                                                                                               
-        self.kp_linear = 0.5                                                                                   
-        self.kp_angular = 1.0                                                                                  
-                                                                                                               
     def aruco_callback(self, msg):                                                                             
         if not msg.poses:                                                                                      
-            self.get_logger().warn('No ArUco markers detected')                                                
+            self.get_logger().debug('No ArUco markers detected')                                               
             return                                                                                             
                                                                                                                
-        # For simplicity, use the first detected marker                                                        
+        target_id = self.get_parameter('target_id').value                                                      
+        target_distance = self.get_parameter('target_distance').value                                          
+                                                                                                               
+        # В текущей реализации PoseArray не содержит ID, поэтому берём первый маркер                           
+        # В реальности нужно использовать сообщение с ID, но для упрощения оставим так                         
         pose = msg.poses[0]                                                                                    
         x = pose.position.x                                                                                    
         y = pose.position.y                                                                                    
                                                                                                                
-        # Calculate error                                                                                      
-        error_x = self.target_x - x                                                                            
-        error_y = self.target_y - y                                                                            
+        # Расстояние до маркера                                                                                
+        distance = math.sqrt(x**2 + y**2)                                                                      
                                                                                                                
-        # Simple P-controller                                                                                  
-        linear_vel = self.kp_linear * error_x                                                                  
-        angular_vel = self.kp_angular * math.atan2(error_y, error_x)                                           
+        # Если уже достаточно близко, остановиться                                                             
+        if distance < target_distance:                                                                         
+            cmd = Twist()                                                                                      
+            cmd.linear.x = 0.0                                                                                 
+            cmd.angular.z = 0.0                                                                                
+            self.cmd_pub.publish(cmd)                                                                          
+            self.get_logger().info(f'Target reached, distance: {distance:.2f}m')                               
+            return                                                                                             
                                                                                                                
-        # Limit velocities                                                                                     
-        linear_vel = max(min(linear_vel, 0.5), -0.5)                                                           
-        angular_vel = max(min(angular_vel, 1.0), -1.0)                                                         
+        # Угол до маркера                                                                                      
+        angle_to_marker = math.atan2(y, x)                                                                     
+                                                                                                               
+        # Пропорциональный регулятор                                                                           
+        kp_linear = self.get_parameter('kp_linear').value                                                      
+        kp_angular = self.get_parameter('kp_angular').value                                                    
+        max_linear = self.get_parameter('max_linear').value                                                    
+        max_angular = self.get_parameter('max_angular').value                                                  
+                                                                                                               
+        # Линейная скорость пропорциональна расстоянию, но не более max_linear                                 
+        linear_vel = kp_linear * (distance - target_distance)                                                  
+        linear_vel = max(min(linear_vel, max_linear), -max_linear)                                             
+                                                                                                               
+        # Угловая скорость пропорциональна углу ошибки                                                         
+        angular_vel = kp_angular * angle_to_marker                                                             
+        angular_vel = max(min(angular_vel, max_angular), -max_angular)                                         
                                                                                                                
         cmd = Twist()                                                                                          
         cmd.linear.x = linear_vel                                                                              
         cmd.angular.z = angular_vel                                                                            
                                                                                                                
         self.cmd_pub.publish(cmd)                                                                              
-        self.get_logger().info(f'Publishing cmd_vel: linear={linear_vel:.2f}, angular={angular_vel:.2f}')      
+        self.get_logger().debug(f'Target distance: {distance:.2f}m, linear: {linear_vel:.2f}, angular:         
+{angular_vel:.2f}')                                                                                            
                                                                                                                
 def main(args=None):                                                                                           
     rclpy.init(args=args)                                                                                      
@@ -57,5 +79,4 @@ def main(args=None):
     rclpy.shutdown()                                                                                           
                                                                                                                
 if __name__ == '__main__':                                                                                     
-    main() 
-    
+    main()               
