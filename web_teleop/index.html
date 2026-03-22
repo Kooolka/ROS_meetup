@@ -1,0 +1,79 @@
+<!DOCTYPE html>                                                                                                
+<html>                                                                                                         
+<head>                                                                                                         
+    <title>Robot Teleop</title>                                                                                
+    <style>                                                                                                    
+        body { font-family: sans-serif; text-align: center; }                                                  
+        .joystick-container { margin: 20px; }                                                                  
+        .control-panel { margin: 20px; }                                                                       
+        button { padding: 10px 20px; font-size: 16px; margin: 5px; }                                           
+        .status { margin-top: 20px; color: #666; }                                                             
+    </style>                                                                                                   
+    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>                   
+</head>                                                                                                        
+<body>                                                                                                         
+    <h1>Robot Teleoperation</h1>                                                                               
+    <div class="joystick-container">                                                                           
+        <div id="joystick" style="width: 200px; height: 200px; margin: 0 auto;"></div>                         
+        <p>Drive joystick</p>                                                                                  
+    </div>                                                                                                     
+    <div class="control-panel">                                                                                
+        <h3>Arm Control</h3>                                                                                   
+        <button onclick="sendArm(0.5, 0)">Lift Up</button>                                                     
+        <button onclick="sendArm(-0.5, 0)">Lift Down</button>                                                  
+        <button onclick="sendArm(0, 30)">Grip Close</button>                                                   
+        <button onclick="sendArm(0, 150)">Grip Open</button>                                                   
+        <button onclick="sendArm(0, 90)">Grip Neutral</button>                                                 
+    </div>                                                                                                     
+    <div class="status" id="status">Disconnected</div>                                                         
+                                                                                                               
+    <script>                                                                                                   
+        let ws = null;                                                                                         
+        function connect() {                                                                                   
+            ws = new WebSocket('ws://' + window.location.hostname + ':8765');                                  
+            ws.onopen = () => {                                                                                
+                document.getElementById('status').textContent = 'Connected';                                   
+                document.getElementById('status').style.color = 'green';                                       
+            };                                                                                                 
+            ws.onclose = () => {                                                                               
+                document.getElementById('status').textContent = 'Disconnected';                                
+                document.getElementById('status').style.color = 'red';                                         
+                setTimeout(connect, 1000);                                                                     
+            };                                                                                                 
+        }                                                                                                      
+        connect();                                                                                             
+                                                                                                               
+        // Joystick                                                                                            
+        const joystick = nipplejs.create({                                                                     
+            zone: document.getElementById('joystick'),                                                         
+            mode: 'static',                                                                                    
+            position: { left: '50%', top: '50%' },                                                             
+            color: 'blue'                                                                                      
+        });                                                                                                    
+        joystick.on('move', (evt, data) => {                                                                   
+            const linear = Math.sin(data.angle.radian) * data.force * 0.5;                                     
+            const angular = -Math.cos(data.angle.radian) * data.force * 1.0;                                   
+            sendDrive(linear, angular);                                                                        
+        });                                                                                                    
+        joystick.on('end', () => sendDrive(0, 0));                                                             
+                                                                                                               
+        function sendDrive(linear, angular) {                                                                  
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;                                               
+            ws.send(JSON.stringify({                                                                           
+                type: 'drive',                                                                                 
+                linear: linear.toFixed(3),                                                                     
+                angular: angular.toFixed(3)                                                                    
+            }));                                                                                               
+        }                                                                                                      
+                                                                                                               
+        function sendArm(lift, grip) {                                                                         
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;                                               
+            ws.send(JSON.stringify({                                                                           
+                type: 'arm',                                                                                   
+                lift: lift,                                                                                    
+                grip: grip                                                                                     
+            }));                                                                                               
+        }                                                                                                      
+    </script>                                                                                                  
+</body>                                                                                                        
+</html>  
