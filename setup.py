@@ -13,7 +13,7 @@ setup(
               f'{package_name}.esp32_bridge',                                                                  
               f'{package_name}.game_manager'],                                                                 
     data_files=[                                                                                               
-        ('share/ament_index/resource_index/packages',                                                          
+         ('share/ament_index/resource_index/packages',                                                          
             ['resource/' + package_name]),                                                                     
         ('share/' + package_name, ['package.xml']),                                                            
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),                                  
